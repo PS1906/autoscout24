@@ -7,3 +7,15 @@ Dieses Repository enthält die Analyse und Modellierung von Gebrauchtwagen-Verka
 **✨ Features**
 
 hier folgen noch weitere Infos
+
+
+
+**🖥 Installation**
+
+```bash
+git clone https://github.com/PS1906/autoscout24.git
+cd autoscout24
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+streamlit run app.py
