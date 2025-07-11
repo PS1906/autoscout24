@@ -2,58 +2,110 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import joblib
+import plotly.express as px
 
-# 1) Modell laden (als .pkl oder .joblib exportiert)
-@st.cache_data(allow_output_mutation=True)
-def load_model(path='src/models/pricing_model.pkl'):
-    return joblib.load(path)
+# Page configuration
+st.set_page_config(page_title="Used Car Dashboard", layout="wide")
 
-model = load_model()
-
-# 2) Daten laden oder manuell eingeben
+# --- Data loading ---
 @st.cache_data
-def load_data(path='src/data/autoscout24.csv'):
-    df = pd.read_csv(path).dropna(subset=['price','mileage','hp','offerType'])
-    return df
+def load_data(path: str = 'data/autoscout24.csv') -> pd.DataFrame:
+    return pd.read_csv(path)
 
 df = load_data()
 
-st.title("Pricing-Modell Dashboard")
+# --- Correlation matrices for 2011 and 2021 ---
+features = ['price', 'hp', 'mileage']
+corr_2011 = df[df['year'] == 2011][features].corr()
+corr_2021 = df[df['year'] == 2021][features].corr()
 
-# 3) Sidebar-Filter
-st.sidebar.header("Filter")
-make_sel      = st.sidebar.multiselect("Marke",    df['make'].unique())
-offer_sel     = st.sidebar.multiselect("OfferType", ['Used','Demonstration','Pre-registered'])
-year_sel      = st.sidebar.slider("Jahr", int(df.year.min()), int(df.year.max()), (2018,2021))
+# --- Top-5 automakers and their average prices ---
+top5 = df['make'].value_counts().head(5).index.tolist()
+df_top5 = df[df['make'].isin(top5)].copy()
+avg_price_year = (
+    df_top5
+    .groupby(['year', 'make'])['price']
+    .mean()
+    .reset_index()
+)
+# Overall average price per automaker
+avg_price_overall = (
+    df_top5
+    .groupby('make')['price']
+    .mean()
+    .round(2)
+    .reset_index()
+    .sort_values(by='price', ascending=False)
+)
 
-# 4) Gefilterte Daten
-mask = df['year'].between(*year_sel)
-if make_sel:  mask &= df['make'].isin(make_sel)
-if offer_sel: mask &= df['offerType'].isin(offer_sel)
-df_filt = df[mask]
+# --- App layout ---
+st.title("Used Car Insights Dashboard")
+st.markdown(
+    "Analyse der Korrelationen und Durchschnittspreise der Top-5-Automarken."
+)
 
-st.subheader(f"Gefilterte Daten: {len(df_filt)} Fahrzeuge")
-st.dataframe(df_filt[['make','year','offerType','mileage','hp','price']].head(50))
+# Display two heatmaps side by side
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("Korrelationsmatrix 2011")
+    fig, ax = plt.subplots(figsize=(4, 4))
+    im = ax.imshow(corr_2011, interpolation='nearest', cmap='Reds')
+    fig.colorbar(im, ax=ax)
+    ax.set_xticks(range(len(features)))
+    ax.set_xticklabels(features, rotation=45)
+    ax.set_yticks(range(len(features)))
+    ax.set_yticklabels(features)
+    for i in range(len(features)):
+        for j in range(len(features)):
+            ax.text(j, i, f"{corr_2011.iloc[i, j]:.2f}",
+                    ha='center', va='center',
+                    color='white' if abs(corr_2011.iloc[i, j]) > 0.5 else 'black')
+    plt.tight_layout()
+    st.pyplot(fig)
+with col2:
+    st.subheader("Korrelationsmatrix 2021")
+    fig, ax = plt.subplots(figsize=(4, 4))
+    im = ax.imshow(corr_2021, interpolation='nearest', cmap='Reds')
+    fig.colorbar(im, ax=ax)
+    ax.set_xticks(range(len(features)))
+    ax.set_xticklabels(features, rotation=45)
+    ax.set_yticks(range(len(features)))
+    ax.set_yticklabels(features)
+    for i in range(len(features)):
+        for j in range(len(features)):
+            ax.text(j, i, f"{corr_2021.iloc[i, j]:.2f}",
+                    ha='center', va='center',
+                    color='white' if abs(corr_2021.iloc[i, j]) > 0.5 else 'black')
+    plt.tight_layout()
+    st.pyplot(fig)
 
-# 5) Vorhersage für gefilterte Daten
-X = df_filt[['mileage','hp']]
-preds = model.predict(X)
-df_filt = df_filt.assign(pred_price=preds)
+# --- Line plot with multiselect and overall average table ---
+st.subheader("Durchschnittspreise pro Jahr und Gesamtübersicht")
+# Layout: two columns for table and chart
+table_col, chart_col = st.columns([1, 2])
+# Multiselect for automakers
+table_col.markdown("**Top-5 Automarken Gesamt-Durchschnittspreis**")
+table_col.dataframe(avg_price_overall.set_index('make'))
 
-# 6) Visualisierung
-fig, ax = plt.subplots()
-ax.scatter(df_filt['mileage'], df_filt['price'], label='Ist-Preis', alpha=0.4)
-ax.scatter(df_filt['mileage'], df_filt['pred_price'], label='Pred-Preis', alpha=0.6, marker='x')
-ax.set_xlabel('Kilometerstand')
-ax.set_ylabel('Preis')
-ax.legend()
-st.pyplot(fig)
+selected_makes = chart_col.multiselect(
+    "Automarke(n) auswählen", options=top5, default=top5
+)
+filtered = avg_price_year[avg_price_year['make'].isin(selected_makes)] if selected_makes else pd.DataFrame()
 
-# 7) Zusammenfassung
-st.markdown(f"""
-**Modell-Performance**  
-- Datensätze: {len(df)}  
-- R² (Test): *hier einfügen*  
-- Features: mileage, hp, make, offerType  
-""")
+if not filtered.empty:
+    fig2 = px.line(
+        filtered,
+        x='year', y='price', color='make', markers=True,
+        labels={
+            'year': 'Verkaufsjahr',
+            'price': 'Durchschnittspreis (€)',
+            'make': 'Automarke'
+        },
+        hover_data={'price': ':.2f'}
+    )
+    chart_col.plotly_chart(fig2, use_container_width=True)
+else:
+    chart_col.info("Bitte mindestens eine Automarke auswählen, um den Plot anzuzeigen.")
+
+# cd C:\Users\PC\Desktop\Projekte\Autoscout-Projekt\src
+# streamlit run app.py
