@@ -14,8 +14,9 @@ hier folgen noch weitere Infos
 
 ```bash
 git clone https://github.com/PS1906/autoscout24.git
-cd autoscout24
+cd src
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+python models/train_models.py
 streamlit run app.py
