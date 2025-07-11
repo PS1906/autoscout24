@@ -5,14 +5,14 @@ import matplotlib.pyplot as plt
 import joblib
 
 # 1) Modell laden (als .pkl oder .joblib exportiert)
-@st.cache(allow_output_mutation=True)
+@st.cache_data(allow_output_mutation=True)
 def load_model(path='pricing_model.pkl'):
     return joblib.load(path)
 
 model = load_model()
 
 # 2) Daten laden oder manuell eingeben
-@st.cache
+@st.cache_data
 def load_data(path='autoscout24.csv'):
     df = pd.read_csv(path).dropna(subset=['price','mileage','hp','offerType'])
     return df
